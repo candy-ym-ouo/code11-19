@@ -25,6 +25,7 @@
     "restore": "bash scripts/restore.sh",
     "backup:drill": "bash scripts/drill.sh",
     "gc": "bash scripts/gc.sh",
+    "repair": "pnpm --filter @heirloom/api repair",
     "verify:loop": "bash scripts/verify-loop.sh",
     "test:ui": "node e2e/ui-smoke.mjs"
   },

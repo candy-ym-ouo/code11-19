@@ -18,6 +18,7 @@ import { AuditPage } from '../features/audit/AuditPage';
 import { SettingsPage } from '../features/settings/SettingsPage';
 import { TrashPage } from '../features/items/TrashPage';
 import { ShareViewPage } from '../features/share/ShareViewPage';
+import { RepairCenterPage } from '../features/repair/RepairCenterPage';
 
 function NotFoundPage() {
   return (
@@ -90,6 +91,14 @@ export function App() {
           element={
             <RequireFamily roles={['owner', 'admin']}>
               <TrashPage />
+            </RequireFamily>
+          }
+        />
+        <Route
+          path="repairs"
+          element={
+            <RequireFamily roles={['owner', 'admin']}>
+              <RepairCenterPage />
             </RequireFamily>
           }
         />

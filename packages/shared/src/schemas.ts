@@ -154,6 +154,12 @@ export const updateMediaSchema = z.object({
   setCover: z.boolean().optional(),
 });
 
+export const REPAIR_TYPES = ['thumbnail', 'waveform', 'duration'] as const;
+
+export const createRepairBatchSchema = z.object({
+  repairs: z.array(z.enum(REPAIR_TYPES)).min(1, '至少选择一项修复内容').max(3),
+});
+
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type CreateItemInput = z.infer<typeof createItemSchema>;

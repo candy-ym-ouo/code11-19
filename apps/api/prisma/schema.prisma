@@ -95,6 +95,7 @@ enum PersonRole {
 enum JobType {
   media_thumbnail
   media_waveform
+  media_duration
   export_build
   trash_purge
   storage_gc
@@ -105,6 +106,19 @@ enum JobStatus {
   running
   done
   failed
+}
+
+enum RepairType {
+  thumbnail
+  waveform
+  duration
+}
+
+enum RepairBatchStatus {
+  running
+  done
+  failed
+  partial
 }
 
 model User {
@@ -399,6 +413,7 @@ model AuditLog {
 model Job {
   id          String    @id @default(cuid())
   familyId    String?   @map("family_id")
+  batchId     String?   @map("batch_id")
   type        JobType
   payload     Json
   status      JobStatus @default(queued)
@@ -413,8 +428,44 @@ model Job {
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
+  batch RepairBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+
   @@index([status, runAfter])
+  @@index([batchId])
   @@map("jobs")
+}
+
+// 媒体重处理批次：一次批量修复的完整快照。
+// fingerprint 是「家庭 + 待修内容摘要（sha + 修复项）」的哈希，
+// 同一批待修内容在有批次运行时不会重复建批，实现按内容摘要幂等。
+model RepairBatch {
+  id               String            @id @default(cuid())
+  familyId         String            @map("family_id")
+  createdBy        String            @map("created_by")
+  fingerprint      String
+  repairs          RepairType[]
+  status           RepairBatchStatus @default(running)
+  totalTargets     Int               @default(0) @map("total_targets")
+  totalJobs        Int               @default(0) @map("total_jobs")
+  succeededTargets Int               @default(0) @map("succeeded_targets")
+  failedTargets    Int               @default(0) @map("failed_targets")
+  // 预估与实际新增占用（字节）。estimate 在扫描时按经验系数估算，actual 在任务完成后按产物实测。
+  estimatedBytes   BigInt            @default(0) @map("estimated_bytes")
+  actualBytes      BigInt            @default(0) @map("actual_bytes")
+  sourceMissing    Int               @default(0) @map("source_missing")
+  // 全部待修目标：[{ mediaId, sha256, storageKey, repair, size }]
+  targets          Json
+  // 失败明细：[{ mediaId, repair, error }]，超过上限只保留最新的若干条。
+  failures         Json
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+  finishedAt       DateTime?         @map("finished_at")
+
+  jobs Job[]
+
+  @@unique([familyId, fingerprint])
+  @@index([familyId, status])
+  @@map("repair_batches")
 }
 
 model RefreshToken {

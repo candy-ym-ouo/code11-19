@@ -37,6 +37,34 @@ export async function hasFfmpeg(): Promise<boolean> {
   return ffmpegAvailable;
 }
 
+/** 仅探测时长（毫秒），不生成任何产物。重处理中心补齐缺失时长时使用。 */
+export async function probeDurationMs(srcPath: string): Promise<number> {
+  if (!(await hasFfmpeg())) {
+    throw new Error('宿主机未安装 ffmpeg，无法探测时长');
+  }
+  const probe = await run(
+    config.FFPROBE_PATH,
+    [
+      '-v',
+      'error',
+      '-show_entries',
+      'format=duration',
+      '-of',
+      'default=noprint_wrappers=1:nokey=1',
+      srcPath,
+    ],
+    { timeoutMs: 60_000 },
+  );
+  if (probe.code !== 0) {
+    throw new Error(`ffprobe 探测失败：${probe.stderr.slice(-300) || '退出码 ' + probe.code}`);
+  }
+  const seconds = Number.parseFloat(probe.stdout.toString().trim());
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    throw new Error('ffprobe 未返回有效时长');
+  }
+  return Math.round(seconds * 1000);
+}
+
 export interface AudioVariants {
   transcodeKey: string | null;
   waveformKey: string | null;
@@ -82,15 +110,11 @@ export async function processAudio(
     await fsp.rm(mp3Path, { force: true });
   }
 
-  const durationProbe = await run(config.FFPROBE_PATH, [
-    '-v',
-    'error',
-    '-show_entries',
-    'format=duration',
-    '-of',
-    'default=noprint_wrappers=1:nokey=1',
-    srcPath,
-  ], { timeoutMs: 60_000 });
+  const durationProbe = await run(
+    config.FFPROBE_PATH,
+    ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', srcPath],
+    { timeoutMs: 60_000 },
+  );
   const durationSec = Number.parseFloat(durationProbe.stdout.toString().trim());
   const durationMs = Number.isFinite(durationSec) ? Math.round(durationSec * 1000) : null;
 

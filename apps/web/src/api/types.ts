@@ -190,3 +190,38 @@ export interface Page<T> {
   nextCursor: string | null;
 }
 
+export type RepairType = 'thumbnail' | 'waveform' | 'duration';
+export type RepairBatchStatus = 'running' | 'done' | 'failed' | 'partial';
+
+export interface RepairPlan {
+  repairs: RepairType[];
+  totalTargets: number;
+  byRepair: Record<RepairType, number>;
+  estimatedBytes: number;
+  uniqueFiles: number;
+}
+
+export interface RepairFailure {
+  mediaId: string;
+  repair: RepairType;
+  error: string;
+}
+
+export interface RepairBatch {
+  id: string;
+  familyId: string;
+  status: RepairBatchStatus;
+  repairs: RepairType[];
+  progress: number;
+  totalTargets: number;
+  totalJobs: number;
+  succeededTargets: number;
+  failedTargets: number;
+  estimatedBytes: number;
+  actualBytes: number;
+  sourceMissing: number;
+  failures: RepairFailure[];
+  createdAt: string;
+  finishedAt: string | null;
+}
+
