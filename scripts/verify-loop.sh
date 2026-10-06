@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 端到端闭环验证：用真实 HTTP 请求走完
 # 注册 → 建家庭 → 建人物 → 建档 → 上传图片/音频 → 发布 → 补充故事 → 邀请成员 →
-# 权限边界 → 私密条目隔离 → 导出 ZIP → 审计留痕 → 回收站。
+# 权限边界 → 私密条目隔离 → 导出 ZIP → 审计留痕 → 回收站 → 媒体重处理中心。
 #
 # 用法：API=http://127.0.0.1:4000 bash scripts/verify-loop.sh
 set -euo pipefail
@@ -51,12 +51,12 @@ echo "== 家中物品来历册 · 闭环验证 =="
 echo "API: $API"
 
 # ---------- 1. 健康检查 ----------
-step "1/10 健康检查"
+step "1/11 健康检查"
 code=$(curl -sS -o "$WORK/body" -w '%{http_code}' "$API/healthz"); expect "$code" 200 "/healthz 存活"
 code=$(curl -sS -o "$WORK/body" -w '%{http_code}' "$API/readyz");  expect "$code" 200 "/readyz 依赖就绪（DB/存储/worker）"
 
 # ---------- 2. 注册首个用户（成为系统管理员） ----------
-step "2/10 注册与登录"
+step "2/11 注册与登录"
 EMAIL_A="owner-$RUN_ID@example.com"
 code=$(req POST "$V1/auth/register" "$JAR_A" "{\"email\":\"$EMAIL_A\",\"password\":\"family2026\",\"displayName\":\"大姐\"}")
 if [ "$code" = "201" ]; then
@@ -86,7 +86,7 @@ code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST -b "$JAR_A" -H 'X-CSRF-To
 expect "$code" 403 "CSRF 不匹配时拒绝刷新"
 
 # ---------- 3. 建家庭 ----------
-step "3/10 创建家庭"
+step "3/11 创建家庭"
 code=$(req POST "$V1/families" "$JAR_A" "{\"name\":\"老张家-$RUN_ID\"}" "$TOKEN_A")
 expect "$code" 201 "创建家庭"
 FID=$(json 'd.family.id' < "$WORK/body")
@@ -96,7 +96,7 @@ ROLE=$(json 'd.myRole' < "$WORK/body")
 if [ "$ROLE" = "owner" ]; then ok "创建者角色为 owner"; else bad "创建者角色应为 owner，实际 $ROLE"; fi
 
 # ---------- 4. 人物 + 条目 ----------
-step "4/10 建立来源人物与物品条目"
+step "4/11 建立来源人物与物品条目"
 code=$(req POST "$V1/families/$FID/people" "$JAR_A" '{"name":"外公","relation":"外公","birthYear":1932}' "$TOKEN_A")
 expect "$code" 201 "新建来源人物「外公」"
 PID=$(json 'd.person.id' < "$WORK/body")
@@ -136,7 +136,7 @@ for spec in "souvenir|结婚时的搪瓷缸" "receipt|1983 年的自行车发票
 done
 
 # ---------- 5. 媒体上传 ----------
-step "5/10 上传图片与音频"
+step "5/11 上传图片与音频"
 node -e '
 const fs=require("fs");
 const png=Buffer.from("iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAHElEQVQ4jWNgYGD4z4AEGAOxGkVg1CgCowYAAJ8kE/0kZ0QpAAAAAElFTkSuQmCC","base64");
@@ -181,7 +181,7 @@ code=$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN_
 expect "$code" 206 "音频原始文件支持 Range 请求（可拖动播放）"
 
 # ---------- 6. 发布 + 补充故事 ----------
-step "6/10 发布条目与家人补充故事"
+step "6/11 发布条目与家人补充故事"
 code=$(req POST "$V1/families/$FID/items/$IID/publish" "$JAR_A" "" "$TOKEN_A")
 expect "$code" 200 "草稿发布为已发布"
 
@@ -198,7 +198,7 @@ VER_COUNT=$(json 'd.versions.length' < "$WORK/body")
 if [ "$VER_COUNT" -ge 2 ]; then ok "版本历史已记录（$VER_COUNT 个版本）"; else bad "版本历史异常：$VER_COUNT"; fi
 
 # ---------- 7. 邀请家人 + 权限边界 ----------
-step "7/10 邀请家人与权限边界"
+step "7/11 邀请家人与权限边界"
 code=$(req POST "$V1/families/$FID/invites" "$JAR_A" '{"role":"viewer","expiresInDays":7,"maxUses":1,"note":"给小妹"}' "$TOKEN_A")
 expect "$code" 201 "生成只读成员的邀请码"
 INVITE_CODE=$(json 'd.invite.code' < "$WORK/body")
@@ -231,7 +231,7 @@ PRIVATE_ID=$(json 'd.item.id' < "$WORK/body")
 if [ -n "$PRIVATE_ID" ]; then ok "创建 private 条目"; else bad "private 条目创建失败"; fi
 
 # ---------- 8. 检索与时间轴 ----------
-step "8/10 检索与时间轴"
+step "8/11 检索与时间轴"
 code=$(req GET "$V1/families/$FID/items?q=%E6%A8%9F%E6%9C%A8" "$JAR_A" "" "$TOKEN_A")
 expect "$code" 200 "关键词检索（樟木）"
 HITS=$(json 'd.items.length' < "$WORK/body")
@@ -249,7 +249,7 @@ if [ "$GROUPS" -ge 1 ]; then ok "时间轴返回 $GROUPS 个时段分组"; else 
 code=$(req GET "$V1/families/$FID/stats" "$JAR_A" "" "$TOKEN_A"); expect "$code" 200 "家庭统计"
 
 # ---------- 9. 分享链接 ----------
-step "9/10 对外分享链接"
+step "9/11 对外分享链接"
 code=$(req POST "$V1/families/$FID/share-links" "$JAR_A" "{\"itemIds\":[\"$IID\"],\"expiresInDays\":7,\"password\":\"zhangjia\",\"label\":\"给二叔看看\"}" "$TOKEN_A")
 expect "$code" 201 "创建带密码的分享链接"
 SHARE_TOKEN=$(json 'd.shareLink.token' < "$WORK/body")
@@ -268,7 +268,7 @@ code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: applica
 expect "$code" 401 "密码错误被拒绝"
 
 # ---------- 10. 导出 / 审计 / 回收站 ----------
-step "10/10 导出、审计与回收站"
+step "10/11 导出、审计与回收站"
 code=$(req POST "$V1/families/$FID/exports" "$JAR_A" "" "$TOKEN_A")
 expect "$code" 202 "创建全量导出任务"
 JOB_ID=$(json 'd.jobId' < "$WORK/body")
@@ -303,6 +303,83 @@ code=$(req GET "$V1/families/$FID/items/trash" "$JAR_A" "" "$TOKEN_A")
 TRASH_N=$(json 'd.items.length' < "$WORK/body")
 if [ "$TRASH_N" -ge 1 ]; then ok "回收站中可查（$TRASH_N 条）"; else bad "回收站查询异常"; fi
 code=$(req POST "$V1/families/$FID/items/$IID/restore" "$JAR_A" "" "$TOKEN_A"); expect "$code" 200 "从回收站恢复"
+
+# ---------- 11. 媒体重处理中心 ----------
+step "11/11 媒体重处理中心（幂等 / 占用估算 / 进度 / 重试）"
+
+# 等待一个批次进入终态，用法：wait_run <runId>；结束后 $RUN_STATUS 为终态
+wait_run() {
+  local rid="$1"
+  RUN_STATUS=""
+  for _ in $(seq 1 60); do
+    sleep 1
+    req GET "$V1/families/$FID/repair/runs/$rid" "$JAR_A" "" "$TOKEN_A" > /dev/null
+    RUN_STATUS=$(json 'd.run.status' < "$WORK/body")
+    case "$RUN_STATUS" in done|done_with_errors|failed) return ;; esac
+  done
+}
+
+# 11.1 占用估算（dry-run）：所有媒体刚处理完，missing 范围应当 0 待修
+code=$(req POST "$V1/families/$FID/repair/preview" "$JAR_A" '{"scope":"missing","verifyOnDisk":true}' "$TOKEN_A")
+expect "$code" 200 "发起占用估算（missing + 核对磁盘）"
+PV_TO_REPAIR=$(json 'd.preview.mediaToRepair' < "$WORK/body")
+PV_BYTES=$(json 'd.preview.bytesEstimate' < "$WORK/body")
+if [ "$PV_TO_REPAIR" = "0" ]; then ok "产物齐全时扫描出 0 条待修"; else bad "刚处理完不应有待修媒体，实际 $PV_TO_REPAIR 条"; fi
+if [ "$PV_BYTES" = "0" ]; then ok "无待修产物时估算占用为 0 字节"; else bad "估算占用应为 0，实际 $PV_BYTES"; fi
+
+# 11.2 空批次：missing 范围发起，应立即 done 且 total=0
+code=$(req POST "$V1/families/$FID/repair/runs" "$JAR_A" '{"scope":"missing","verifyOnDisk":true}' "$TOKEN_A")
+expect "$code" 202 "发起 missing 重处理批次"
+EMPTY_RUN=$(json 'd.run.id' < "$WORK/body")
+wait_run "$EMPTY_RUN"
+expect "$RUN_STATUS" "done" "无需修复的批次直接完成"
+EMPTY_TOTAL=$(json 'd.run.total' < "$WORK/body")
+if [ "$EMPTY_TOTAL" = "0" ]; then ok "空批次 total=0、进度 100%"; else bad "空批次 total 应为 0，实际 $EMPTY_TOTAL"; fi
+
+# 11.3 强制重建（scope=all，只图片）：即使产物齐全也要重做
+code=$(req POST "$V1/families/$FID/repair/runs" "$JAR_A" '{"scope":"all","verifyOnDisk":true,"kinds":["image"]}' "$TOKEN_A")
+expect "$code" 202 "发起 all 强制重建批次（仅图片）"
+FORCE_RUN=$(json 'd.run.id' < "$WORK/body")
+wait_run "$FORCE_RUN"
+if [ "$RUN_STATUS" = "done" ] || [ "$RUN_STATUS" = "done_with_errors" ]; then ok "强制重建批次结束（$RUN_STATUS）"; else bad "强制重建批次状态：$RUN_STATUS"; fi
+req GET "$V1/families/$FID/repair/runs/$FORCE_RUN" "$JAR_A" "" "$TOKEN_A" > /dev/null
+F_TOTAL=$(json 'd.run.total' < "$WORK/body")
+F_DONE=$(json 'd.run.doneCount' < "$WORK/body")
+F_PROGRESS=$(json 'd.run.progress' < "$WORK/body")
+F_BYTES=$(json 'd.run.bytesActual' < "$WORK/body")
+# 条目上传了同一张照片两次（去重存储），至少 1 个图片媒体；全部应成功
+if [ "$F_TOTAL" -ge 1 ] && [ "$F_DONE" = "$F_TOTAL" ]; then ok "全部图片条目重处理成功（$F_DONE/$F_TOTAL）"; else bad "图片重处理成功数异常：$F_DONE/$F_TOTAL"; fi
+if [ "$F_PROGRESS" = "100" ]; then ok "批次进度达到 100%"; else bad "批次进度应为 100，实际 $F_PROGRESS"; fi
+if [ "$F_BYTES" -gt 0 ]; then ok "统计到实际新增占用（$F_BYTES 字节）"; else bad "强制重建应有实际占用，实际 $F_BYTES"; fi
+
+# 11.4 条目明细可取，且产物标记为 thumb+large
+code=$(req GET "$V1/families/$FID/repair/runs/$FORCE_RUN/items?limit=200" "$JAR_A" "" "$TOKEN_A")
+expect "$code" 200 "查询批次明细"
+ITEM_N=$(json 'd.items.length' < "$WORK/body")
+if [ "$ITEM_N" -ge 1 ]; then ok "明细返回 $ITEM_N 条"; else bad "明细为空"; fi
+ITEM_ART=$(json 'd.items.map(i=>i.artifacts.join(",")).join("|")' < "$WORK/body")
+if grep -q "thumb" <<<"$ITEM_ART" && grep -q "large" <<<"$ITEM_ART"; then ok "明细标注了缩略图与大图产物"; else bad "产物标注异常：$ITEM_ART"; fi
+
+# 11.5 幂等性：对同一条已完成的明细手动重试，应被重新入队并再次成功（内容寻址不重复占盘）
+DONE_ITEM=$(json 'd.items.find(i=>i.status==="done").id' < "$WORK/body")
+if [ -n "$DONE_ITEM" ]; then
+  code=$(req POST "$V1/families/$FID/repair/runs/$FORCE_RUN/items/$DONE_ITEM/retry" "$JAR_A" "" "$TOKEN_A")
+  expect "$code" 200 "手动重试一条已完成图片"
+  wait_run "$FORCE_RUN"
+  if [ "$RUN_STATUS" = "done" ]; then ok "手动重试后批次重新收敛为 done（幂等）"; else bad "重试后批次状态：$RUN_STATUS"; fi
+else
+  bad "没有可重试的已完成条目"
+fi
+
+# 11.6 再来一次 missing 扫描：强制重建后产物齐全，仍应 0 待修（证明没有副作用）
+code=$(req POST "$V1/families/$FID/repair/preview" "$JAR_A" '{"scope":"missing","verifyOnDisk":true}' "$TOKEN_A")
+PV2=$(json 'd.preview.mediaToRepair' < "$WORK/body")
+if [ "$PV2" = "0" ]; then ok "重建后再次扫描仍为 0 待修（幂等闭环）"; else bad "重建后出现 $PV2 条待修，说明有副作用"; fi
+
+# 11.7 批次列表可查
+code=$(req GET "$V1/families/$FID/repair/runs" "$JAR_A" "" "$TOKEN_A"); expect "$code" 200 "查询重处理批次列表"
+RUNS_N=$(json 'd.runs.length' < "$WORK/body")
+if [ "$RUNS_N" -ge 2 ]; then ok "批次列表包含本次运行（$RUNS_N 个）"; else bad "批次列表异常：$RUNS_N"; fi
 
 # ---------- 汇总 ----------
 printf '\n\033[1m结果：%d 项通过，%d 项失败\033[0m\n' "$PASS" "$FAIL"

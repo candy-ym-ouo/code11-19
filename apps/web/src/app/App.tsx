@@ -16,6 +16,7 @@ import { PersonDetailPage } from '../features/people/PersonDetailPage';
 import { MembersPage } from '../features/members/MembersPage';
 import { AuditPage } from '../features/audit/AuditPage';
 import { SettingsPage } from '../features/settings/SettingsPage';
+import { RepairCenterPage } from '../features/repair/RepairCenterPage';
 import { TrashPage } from '../features/items/TrashPage';
 import { ShareViewPage } from '../features/share/ShareViewPage';
 
@@ -98,6 +99,14 @@ export function App() {
           element={
             <RequireFamily roles={['owner', 'admin']}>
               <SettingsPage />
+            </RequireFamily>
+          }
+        />
+        <Route
+          path="repair"
+          element={
+            <RequireFamily roles={['owner', 'admin']}>
+              <RepairCenterPage />
             </RequireFamily>
           }
         />

@@ -154,6 +154,32 @@ export const updateMediaSchema = z.object({
   setCover: z.boolean().optional(),
 });
 
+export const REPAIR_SCOPES = ['missing', 'failed', 'all'] as const;
+export const REPAIR_ARTIFACTS = ['thumb', 'large', 'waveform', 'transcode', 'duration'] as const;
+
+export const createRepairRunSchema = z
+  .object({
+    /** missing=只补缺失产物（默认）；failed=仅重试历史失败；all=全部媒体强制重建 */
+    scope: z.enum(REPAIR_SCOPES).optional(),
+    /** 除了看数据库标记，还 stat 磁盘上派生文件是否真的存在（迁移/误删后用） */
+    verifyOnDisk: z.boolean().optional(),
+    kinds: z.array(z.enum(MEDIA_KINDS)).max(10).optional(),
+    /** 只修这些媒体；不传即覆盖整个家庭 */
+    mediaIds: z.array(z.string().min(1)).max(5000).optional(),
+    /** 只估算不落任务，用于「占用估算」按钮 */
+    dryRun: z.boolean().optional(),
+    maxAttempts: z.number().int().min(1).max(10).optional(),
+  })
+  .strict();
+
+export const listRepairItemsQuerySchema = z.object({
+  status: z.enum(['pending', 'running', 'done', 'skipped', 'failed']).optional(),
+  limit: z.coerce.number().int().min(1).max(500).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+});
+
+export type CreateRepairRunInput = z.infer<typeof createRepairRunSchema>;
+
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type CreateItemInput = z.infer<typeof createItemSchema>;

@@ -9,6 +9,7 @@ import { inspectDocument } from '../media/document';
 import { putBuffer, remove } from '../storage/local';
 import { makeTmpPath } from '../services/mediaService';
 import { buildExportZip } from '../services/exportService';
+import { dispatchRun, processImageRepair, processAudioRepair, settleItemAfterJobError } from '../services/mediaRepairService';
 
 type Handler = (job: Job) => Promise<Record<string, unknown>>;
 
@@ -89,7 +90,7 @@ async function handleExport(job: Job): Promise<Record<string, unknown>> {
   return { items: result.items, media: result.media, bytes: result.bytes, file: result.file };
 }
 
-/** 回收站保留期到期后彻底删除（含磁盘文件）。 */
+/** 回收站保留期到期后彻底删除（含磁盘文件）；顺带清理 30 天前已终结的重处理批次。 */
 async function handleTrashPurge(): Promise<Record<string, unknown>> {
   const cutoff = new Date(Date.now() - config.TRASH_RETENTION_DAYS * 86_400_000);
   const expired = await prisma.item.findMany({
@@ -104,7 +105,16 @@ async function handleTrashPurge(): Promise<Record<string, unknown>> {
     await Promise.all(keys.filter(Boolean).map((k) => remove(k!).catch(() => undefined)));
     removed += 1;
   }
-  return { removed, cutoff: cutoff.toISOString() };
+
+  // 重处理批次只是进度聚合视图（不持有文件），已终结超过保留期的直接清掉
+  const repairResult = await prisma.mediaRepairRun.deleteMany({
+    where: {
+      status: { in: ['done', 'done_with_errors', 'failed'] },
+      finishedAt: { lt: cutoff },
+    },
+  });
+
+  return { removed, runsPurged: repairResult.count, cutoff: cutoff.toISOString() };
 }
 
 /** 清理孤儿文件与过期导出包，防止磁盘只涨不降。 */
@@ -181,16 +191,30 @@ const HANDLERS: Record<string, Handler> = {
   export_build: handleExport,
   trash_purge: handleTrashPurge,
   storage_gc: handleStorageGc,
+  media_repair_dispatch: dispatchRun,
+  media_repair_image: processImageRepair,
+  media_repair_audio: processAudioRepair,
 };
 
-/** 原子领取一个任务：UPDATE ... WHERE id IN (SELECT ... FOR UPDATE SKIP LOCKED)。 */
+/**
+ * 原子领取一个任务：UPDATE ... WHERE id IN (SELECT ... FOR UPDATE SKIP LOCKED)。
+ * 普通任务取到点的 queued 行；此外回收「卡在 running 超过 30 分钟」的任务
+ * （worker 进程崩溃/机器断电后没有机会回写状态）。卡在 running 的任务按又一次尝试计数，
+ * 超过 max_attempts 同样判失败，避免无限重跑。
+ */
 async function claimJob(): Promise<Job | null> {
   const rows = await prisma.$queryRaw<{ id: string }[]>`
-    UPDATE jobs SET status = 'running', started_at = now(), attempts = attempts + 1
+    UPDATE jobs
+    SET status = 'running',
+        started_at = COALESCE(started_at, now()),
+        updated_at = now(),
+        attempts = attempts + 1
     WHERE id = (
       SELECT id FROM jobs
-      WHERE status = 'queued' AND run_after <= now()
-      ORDER BY created_at ASC
+      WHERE
+        (status = 'queued' AND run_after <= now())
+        OR (status = 'running' AND updated_at < now() - interval '30 minutes')
+      ORDER BY (status = 'running') ASC, created_at ASC
       LIMIT 1
       FOR UPDATE SKIP LOCKED
     )
@@ -232,6 +256,11 @@ async function runOnce(): Promise<boolean> {
         runAfter: new Date(Date.now() + backoffMs),
       },
     });
+    if (job.type === 'media_repair_image' || job.type === 'media_repair_audio') {
+      await settleItemAfterJobError(job, exhausted, message).catch((settleErr) =>
+        logger.error({ settleErr, jobId: job.id }, '修复条目状态回写失败'),
+      );
+    }
     logger.error({ jobId: job.id, type: job.type, attempts: job.attempts, err: message }, '任务失败');
   }
   return true;

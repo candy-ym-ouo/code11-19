@@ -144,8 +144,19 @@ export function SettingsPage() {
 
       <section className="card">
         <div className="card__head">
-          <h2>导出全部数据</h2>
-          <Button variant="primary" loading={startExport.isPending} onClick={() => startExport.mutate()}>
+          <h2>媒体重处理</h2>
+          <Link className="btn btn--primary btn--sm" to={`/f/${fid}/repair`}>
+            打开媒体修复中心
+          </Link>
+        </div>
+        <p className="muted" style={{ marginBottom: 0 }}>
+          批量补齐缺失的缩略图、音频波形与时长，支持磁盘核对、占用估算、进度查看与失败重试；按文件内容幂等执行，重复运行不会重复生成。
+        </p>
+      </section>
+
+      <section className="card">
+        <div className="card__head">
+          <h2>导出全部数据</h2>          <Button variant="primary" loading={startExport.isPending} onClick={() => startExport.mutate()}>
             开始导出
           </Button>
         </div>

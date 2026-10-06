@@ -20,6 +20,7 @@ import { shareLinksRouter } from './routes/shareLinks';
 import { exportsRouter } from './routes/exports';
 import { invitesRouter } from './routes/invites';
 import { publicRouter } from './routes/public';
+import { repairRouter } from './routes/repair';
 import { prisma } from './db';
 import { exists, ensureDirs, writeJson } from './storage/local';
 import { hasFfmpeg } from './media/audio';
@@ -129,6 +130,7 @@ export function createApp() {
   app.use('/api/v1/families/:fid/media', csrfGuard, attachUser, mediaRouter);
   app.use('/api/v1/families/:fid/share-links', csrfGuard, attachUser, shareLinksRouter);
   app.use('/api/v1/families/:fid/exports', csrfGuard, attachUser, exportsRouter);
+  app.use('/api/v1/families/:fid/repair', csrfGuard, attachUser, repairRouter);
   app.use('/api/v1/invites', csrfGuard, attachUser, invitesRouter);
   app.use('/api/v1/public', csrfGuard, attachUser, publicRouter);
 

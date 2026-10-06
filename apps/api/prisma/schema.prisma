@@ -98,6 +98,9 @@ enum JobType {
   export_build
   trash_purge
   storage_gc
+  media_repair_dispatch
+  media_repair_image
+  media_repair_audio
 }
 
 enum JobStatus {
@@ -105,6 +108,37 @@ enum JobStatus {
   running
   done
   failed
+}
+
+enum RepairScope {
+  missing
+  failed
+  all
+}
+
+enum RunStatus {
+  scanning
+  queued
+  running
+  done
+  done_with_errors
+  failed
+}
+
+enum RepairItemStatus {
+  pending
+  running
+  done
+  skipped
+  failed
+}
+
+enum RepairArtifact {
+  thumb
+  large
+  waveform
+  transcode
+  duration
 }
 
 model User {
@@ -146,6 +180,7 @@ model Family {
   shareLinks ShareLink[]
   auditLogs  AuditLog[]
   settings   Setting[]
+  repairRuns MediaRepairRun[]
 
   @@map("families")
 }
@@ -443,4 +478,58 @@ model Setting {
 
   @@id([familyId, key])
   @@map("settings")
+}
+
+/// 一次「媒体重处理」批处理：扫描缺失/失败的媒体产物（缩略图、大图、波形、转码、时长），
+/// 为每个媒体生成幂等的 RepairItem，并逐条调度后台 Job。
+/// Run 只是进度聚合视图，真正的重试/退避复用 jobs 表的既有机制。
+model MediaRepairRun {
+  id           String      @id @default(cuid())
+  familyId     String      @map("family_id")
+  scope        RepairScope @default(missing)
+  status       RunStatus   @default(scanning)
+  verifyOnDisk Boolean     @default(false) @map("verify_on_disk")
+  options      Json
+  total        Int         @default(0)
+  doneCount    Int         @default(0) @map("done_count")
+  failedCount  Int         @default(0) @map("failed_count")
+  skippedCount Int         @default(0) @map("skipped_count")
+  bytesEstimate BigInt     @default(0) @map("bytes_estimate")
+  bytesActual   BigInt     @default(0) @map("bytes_actual")
+  lastError    String?     @map("last_error")
+  createdBy    String      @map("created_by")
+  startedAt    DateTime?   @map("started_at")
+  finishedAt   DateTime?   @map("finished_at")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+
+  family Family                @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  items  MediaRepairItem[]
+
+  @@index([familyId, createdAt])
+  @@map("media_repair_runs")
+}
+
+model MediaRepairItem {
+  id          String            @id @default(cuid())
+  runId       String            @map("run_id")
+  mediaId     String            @map("media_id")
+  jobId       String?           @map("job_id")
+  artifacts   RepairArtifact[]
+  status      RepairItemStatus  @default(pending)
+  attempts    Int               @default(0)
+  bytesEstimate BigInt          @default(0) @map("bytes_estimate")
+  bytesActual   BigInt          @default(0) @map("bytes_actual")
+  lastError   String?           @map("last_error")
+  startedAt   DateTime?         @map("started_at")
+  finishedAt  DateTime?         @map("finished_at")
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+
+  run MediaRepairRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, mediaId])
+  @@index([runId, status])
+  @@index([mediaId])
+  @@map("media_repair_items")
 }

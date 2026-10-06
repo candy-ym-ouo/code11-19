@@ -1125,3 +1125,18 @@
   }
 }
 
+
+/* 媒体重处理中心：批次进度条 */
+.progress {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-3, #e3e8ea);
+  overflow: hidden;
+}
+
+.progress__bar {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent, #2f6f7f);
+  transition: width 0.4s ease;
+}
